@@ -14,6 +14,7 @@ OptionParser.new do |opts|
   opts.banner = "Usage: whenever [options]"
   opts.on('-v', '--version') { puts "Whenever v#{Whenever::VERSION::STRING}"; exit }
   opts.on('-w', '--write-crontab') { options[:write] = true }
+  opts.on('-n', '--name [name]') {|n| options[:name] = n }
   opts.on('-f', '--load-file [schedule file]', 'default: config/schedule.rb') do |file|
     options[:file] = file if file
   end
@@ -29,12 +30,25 @@ unless File.exists?(options[:file])
   exit(1)
 end
 
+def merge_existing(fresh, old, name)
+  return fresh if name.nil?
+  escaped = Regexp.escape(name)
+  wrapped_fresh = "# start #{name}\n#{fresh}# end #{name}\n"
+  old.gsub(/# start #{escaped}.*?# end #{escaped}/m, '') + wrapped_fresh
+end
+
 if options[:write]
   cron_output   = Whenever.cron(:file => options[:file])
+  
+  command = ['crontab -l']
+  command << "-u #{options[:user]}" if options[:user]
+  existing = `#{command}`
+  
   tmp_cron_file = Tempfile.new('whenever_tmp_cron').path
   File.open(tmp_cron_file, File::WRONLY | File::APPEND) do |file|
-    file << cron_output
+    file << merge_existing(cron_output, existing, options[:name])
   end
+  
   
   command = ['crontab']
   command << "-u #{options[:user]}" if options[:user]
